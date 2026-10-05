@@ -143,6 +143,9 @@ public class ReplayReader : Unreal.Core.ReplayReader<FortniteReplay>
             case BaseWeapon weapon:
                 Builder.UpdateWeapon(channelIndex, weapon);
                 break;
+            case Models.NetFieldExports.RPC.BatchedDamageCues damageCues:
+                Builder.UpdateDamageCues(channelIndex, damageCues);
+                break;
         }
     }
 

@@ -75,6 +75,49 @@ public class PlayerData
     public uint? CurrentWeapon { get; internal set; }
 
     public IList<PlayerMovement> Locations { get; set; } = new List<PlayerMovement>();
+
+    // ---- Damage (populated from BatchedDamageCues in Full mode; see FortniteReplayBuilder.UpdateDamageCues) ----
+    // Attribution is BY OWNING PAWN CHANNEL (the cue carries no attacker field), so treat as best-effort
+    // until validated against the elimination list. See docs/findings/05-damage.md.
+
+    /// <summary>Total damage this player DEALT to other players (sum of player-hit cue magnitudes attributed to them as attacker).</summary>
+    public float DamageDealt { get; internal set; }
+
+    /// <summary>Total damage this player TOOK from player sources (sum of cue magnitudes where they were the HitActor).</summary>
+    public float DamageTaken { get; internal set; }
+
+    /// <summary>Count of player-hit damage cues attributed to this player as the attacker.</summary>
+    public int DamageDealtEventCount { get; internal set; }
+
+    /// <summary>Count of player-hit damage cues where this player was the victim.</summary>
+    public int DamageTakenEventCount { get; internal set; }
+
+    /// <summary>Damage this player dealt to NON-player actors (e.g. AI/NPC pawns in this playlist). Kept separate so player-vs-player totals stay clean.</summary>
+    public float DamageDealtToNonPlayers { get; internal set; }
+
+    /// <summary>Count of damage cues this player dealt to non-player actors.</summary>
+    public int DamageDealtToNonPlayersEventCount { get; internal set; }
+
+    /// <summary>Individual player-vs-player damage cues this player DEALT, kept for validation/analysis.</summary>
+    public IList<DamageEvent> DamageEvents { get; set; } = new List<DamageEvent>();
+}
+
+/// <summary>
+/// A single player-vs-player damage cue (BatchedDamageCues). Attacker is inferred from the owning pawn
+/// channel (the cue has no explicit attacker field); victim is the resolved HitActor.
+/// </summary>
+public class DamageEvent
+{
+    public string? VictimEpicId { get; set; }
+    public float Magnitude { get; set; }
+    public bool IsFatal { get; set; }
+    public bool IsCritical { get; set; }
+    public bool IsShield { get; set; }
+    public bool AttackerResolved { get; set; }
+    public bool VictimResolved { get; set; }
+    public float? Time { get; set; }
+    public double? TimeDouble { get; set; }
+    public FVector? Location { get; set; }
 }
 
 public class Cosmetics

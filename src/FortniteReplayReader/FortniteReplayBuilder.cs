@@ -298,6 +298,72 @@ public class FortniteReplayBuilder
         KillFeed.Add(entry);
     }
 
+    /// <summary>
+    /// Consume a BatchedDamageCues RPC. The cue is multicast from the ATTACKER's pawn channel and only
+    /// carries the victim (<see cref="BatchedDamageCues.HitActor"/>), magnitude and hit flags — there is
+    /// no attacker field. So the attacker is inferred from <paramref name="channelIndex"/> (the owning
+    /// pawn channel).
+    ///
+    /// IMPORTANT (established empirically, see docs/findings/05-damage.md): only ~1/3 of HitActor GUIDs
+    /// resolve to lobby players; the rest are non-player pawns (this playlist has AI/NPCs). To keep the
+    /// aggregates meaningful as player-vs-player stats, damage is only accumulated when the VICTIM
+    /// resolves to a lobby player. Cues whose victim is a non-player are counted separately so the
+    /// non-player share is visible.
+    /// </summary>
+    public void UpdateDamageCues(uint channelIndex, Models.NetFieldExports.RPC.BatchedDamageCues cues)
+    {
+        if (cues.bIsValid == false)
+        {
+            return;
+        }
+        if (cues.Magnitude is not float magnitude || cues.HitActor is not uint victimActor)
+        {
+            return;
+        }
+
+        var attackerResolved = TryGetPlayerDataFromPawn(channelIndex, out var attacker);
+        var victimResolved = TryGetPlayerDataFromActor(victimActor, out var victim);
+
+        // Player-vs-non-player (e.g. AI): record only on the attacker as "non-player damage" and stop.
+        if (!victimResolved)
+        {
+            if (attackerResolved && attacker is not null)
+            {
+                attacker.DamageDealtToNonPlayers += magnitude;
+                attacker.DamageDealtToNonPlayersEventCount++;
+            }
+            return;
+        }
+
+        // Victim is a lobby player: this is a player-vs-player hit.
+        var ev = new DamageEvent
+        {
+            Magnitude = magnitude,
+            IsFatal = cues.bIsFatal == true,
+            IsCritical = cues.bIsCritical == true,
+            IsShield = cues.bIsShield == true,
+            AttackerResolved = attackerResolved,
+            VictimResolved = victimResolved,
+            VictimEpicId = victim?.PlayerId,
+            Time = ReplicatedWorldTimeSeconds,
+            TimeDouble = ReplicatedWorldTimeSecondsDouble,
+            Location = cues.Location,
+        };
+
+        if (attackerResolved && attacker is not null)
+        {
+            attacker.DamageDealt += magnitude;
+            attacker.DamageDealtEventCount++;
+            attacker.DamageEvents.Add(ev);
+        }
+
+        if (victimResolved && victim is not null)
+        {
+            victim.DamageTaken += magnitude;
+            victim.DamageTakenEventCount++;
+        }
+    }
+
     public void UpdatePlayerPawn(uint channelIndex, PlayerPawn pawn)
     {
         PlayerData playerState;
