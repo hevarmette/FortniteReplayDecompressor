@@ -5,6 +5,7 @@ using FortniteReplayReader.Models.NetFieldExports.Weapons;
 
 namespace FortniteReplayReader;
 
+
 /// <summary>
 /// Responsible for constructing the <see cref="FortniteReplay"/> out of the received exports.
 /// </summary>
@@ -304,35 +305,36 @@ public class FortniteReplayBuilder
     /// no attacker field. So the attacker is inferred from <paramref name="channelIndex"/> (the owning
     /// pawn channel).
     ///
-    /// IMPORTANT (established empirically, see docs/findings/05-damage.md): only ~1/3 of HitActor GUIDs
-    /// resolve to lobby players; the rest are non-player pawns (this playlist has AI/NPCs). To keep the
-    /// aggregates meaningful as player-vs-player stats, damage is only accumulated when the VICTIM
-    /// resolves to a lobby player. Cues whose victim is a non-player are counted separately so the
-    /// non-player share is visible.
+    /// About HitActor (established empirically, see docs/findings/05-damage.md): most cues' HitActor is
+    /// the MAP ENVIRONMENT (terrain/cliffs/walls/water) — i.e. shots that hit the world, not a player.
+    /// In these Reload tournaments every combatant is a real player (no AI). We only accumulate
+    /// player-vs-player damage when the victim resolves to a lobby player; everything else is counted on
+    /// the attacker as environment/suppressive fire so the PvP totals stay clean. Returns true iff the
+    /// victim resolved to a lobby player.
     /// </summary>
-    public void UpdateDamageCues(uint channelIndex, Models.NetFieldExports.RPC.BatchedDamageCues cues)
+    public bool UpdateDamageCues(uint channelIndex, Models.NetFieldExports.RPC.BatchedDamageCues cues)
     {
         if (cues.bIsValid == false)
         {
-            return;
+            return false;
         }
         if (cues.Magnitude is not float magnitude || cues.HitActor is not uint victimActor)
         {
-            return;
+            return false;
         }
 
         var attackerResolved = TryGetPlayerDataFromPawn(channelIndex, out var attacker);
         var victimResolved = TryGetPlayerDataFromActor(victimActor, out var victim);
 
-        // Player-vs-non-player (e.g. AI): record only on the attacker as "non-player damage" and stop.
+        // Victim is not a lobby player: the shot hit the map environment. Record as environment fire.
         if (!victimResolved)
         {
             if (attackerResolved && attacker is not null)
             {
-                attacker.DamageDealtToNonPlayers += magnitude;
-                attacker.DamageDealtToNonPlayersEventCount++;
+                attacker.DamageToEnvironment += magnitude;
+                attacker.DamageToEnvironmentEventCount++;
             }
-            return;
+            return false;
         }
 
         // Victim is a lobby player: this is a player-vs-player hit.
@@ -362,6 +364,8 @@ public class FortniteReplayBuilder
             victim.DamageTaken += magnitude;
             victim.DamageTakenEventCount++;
         }
+
+        return true;
     }
 
     public void UpdatePlayerPawn(uint channelIndex, PlayerPawn pawn)

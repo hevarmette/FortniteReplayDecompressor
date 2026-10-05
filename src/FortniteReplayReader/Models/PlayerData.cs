@@ -92,11 +92,11 @@ public class PlayerData
     /// <summary>Count of player-hit damage cues where this player was the victim.</summary>
     public int DamageTakenEventCount { get; internal set; }
 
-    /// <summary>Damage this player dealt to NON-player actors (e.g. AI/NPC pawns in this playlist). Kept separate so player-vs-player totals stay clean.</summary>
-    public float DamageDealtToNonPlayers { get; internal set; }
+    /// <summary>Damage this player's shots dealt to the MAP ENVIRONMENT (terrain, cliffs, walls, water, etc.) rather than to a player. In Reload tournaments all combatants are real players, so this is essentially missed/suppressive fire, not combat damage. Kept separate so player-vs-player totals stay clean.</summary>
+    public float DamageToEnvironment { get; internal set; }
 
-    /// <summary>Count of damage cues this player dealt to non-player actors.</summary>
-    public int DamageDealtToNonPlayersEventCount { get; internal set; }
+    /// <summary>Count of damage cues this player dealt to the map environment.</summary>
+    public int DamageToEnvironmentEventCount { get; internal set; }
 
     /// <summary>Individual player-vs-player damage cues this player DEALT, kept for validation/analysis.</summary>
     public IList<DamageEvent> DamageEvents { get; set; } = new List<DamageEvent>();
