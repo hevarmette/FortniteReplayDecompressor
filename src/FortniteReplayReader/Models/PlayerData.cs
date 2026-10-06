@@ -100,6 +100,37 @@ public class PlayerData
 
     /// <summary>Individual player-vs-player damage cues this player DEALT, kept for validation/analysis.</summary>
     public IList<DamageEvent> DamageEvents { get; set; } = new List<DamageEvent>();
+
+    // ---- Edits (populated from build-piece EditingPlayer transitions in Debug mode; Task 6) ----
+
+    /// <summary>Number of completed edit interactions attributed to this player (EditingPlayer set then cleared on a build piece).</summary>
+    public int EditCount { get; internal set; }
+
+    /// <summary>Edit interactions where a start was seen but no end before the piece/replay ended.</summary>
+    public int EditOpenCount { get; internal set; }
+
+    /// <summary>Sum of durations (seconds) of completed edits — only meaningful if start/end pairing is reliable (see findings).</summary>
+    public double EditTotalDurationSeconds { get; internal set; }
+
+    /// <summary>Number of edits whose duration was within the plausibility cap and folded into EditTotalDurationSeconds.</summary>
+    public int EditTimedCount { get; internal set; }
+
+    /// <summary>Individual completed edit interactions for this player.</summary>
+    public IList<EditEvent> EditEvents { get; set; } = new List<EditEvent>();
+
+    // ---- ClientObservedStats (Debug mode; name/value pairs replicated per pawn) ----
+
+    /// <summary>Raw ClientObservedStats seen for this player: StatName -> last StatValue.</summary>
+    public IDictionary<string, int> ObservedStats { get; set; } = new Dictionary<string, int>();
+}
+
+/// <summary>A completed edit interaction (EditingPlayer set -> cleared on one build piece).</summary>
+public class EditEvent
+{
+    public uint BuildChannel { get; set; }
+    public double? StartTime { get; set; }
+    public double? EndTime { get; set; }
+    public double? DurationSeconds => (StartTime.HasValue && EndTime.HasValue) ? EndTime - StartTime : null;
 }
 
 /// <summary>

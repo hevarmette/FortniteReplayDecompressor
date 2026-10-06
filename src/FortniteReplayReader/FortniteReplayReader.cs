@@ -146,6 +146,12 @@ public class ReplayReader : Unreal.Core.ReplayReader<FortniteReplay>
             case Models.NetFieldExports.RPC.BatchedDamageCues damageCues:
                 Builder.UpdateDamageCues(channelIndex, damageCues);
                 break;
+            case Models.NetFieldExports.Vehicles.BaseBuild build:
+                Builder.UpdateBuild(channelIndex, build);
+                break;
+            case FortClientObservedStat observedStat:
+                Builder.UpdateClientObservedStats(channelIndex, observedStat);
+                break;
         }
     }
 
@@ -212,11 +218,18 @@ public class ReplayReader : Unreal.Core.ReplayReader<FortniteReplay>
         }
 
         _logger?.LogDebug("Unknown event {group} ({metadata}) of size {sizeInBytes}", info.Group, info.Metadata, info.SizeInBytes);
+        // Debug mode normally hard-fails on unknown events to surface gaps. For our purposes (edit/stat
+        // extraction via Debug-level net fields) a few unparsed metadata event chunks — e.g. "Timecode"
+        // (TimecodeVersionedMeta) — are harmless: the event body was already consumed by DecryptBuffer
+        // above, so the archive is positioned for the next chunk. Collect them instead of aborting.
         if (IsDebugMode)
         {
-            throw new UnknownEventException($"Unknown event {info.Group} ({info.Metadata}) of size {info.SizeInBytes}");
+            UnknownEvents.Add($"{info.Group} ({info.Metadata}) size {info.SizeInBytes}");
         }
     }
+
+    /// <summary>Unknown event chunks encountered in Debug mode (collected instead of throwing).</summary>
+    public List<string> UnknownEvents { get; } = new();
 
     public virtual EncryptionKey ParseEncryptionKeyEvent(FArchive archive, EventInfo info) => new()
     {

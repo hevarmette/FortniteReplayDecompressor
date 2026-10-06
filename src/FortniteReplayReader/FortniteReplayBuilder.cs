@@ -38,6 +38,13 @@ public class FortniteReplayBuilder
     private float? ReplicatedWorldTimeSeconds = 0;
     private double? ReplicatedWorldTimeSecondsDouble = 0;
 
+    /// <summary>
+    /// In-progress edits keyed by build-piece channel: the player currently editing it and when they
+    /// started. An edit is "completed" when EditingPlayer transitions back to none on that channel.
+    /// (Debug mode only; see Task 6 / docs/findings/06-edits.md.)
+    /// </summary>
+    private readonly Dictionary<uint, (PlayerData player, double? startTime)> _activeEdits = new();
+
     public void AddActorChannel(uint channelIndex, uint guid)
     {
         _actorToChannel[guid] = channelIndex;
@@ -366,6 +373,84 @@ public class FortniteReplayBuilder
         }
 
         return true;
+    }
+
+    /// <summary>
+    /// Track editing on a build piece (Debug mode). <see cref="BaseBuild.EditingPlayer"/> is the actor
+    /// GUID of the pawn currently editing the piece; it transitions to a player when an edit starts and
+    /// back to 0/none when it ends. We pair those transitions per build-piece channel to count edits and
+    /// (tentatively) time them. See docs/findings/06-edits.md for reliability caveats.
+    /// </summary>
+    public void UpdateBuild(uint channelIndex, Models.NetFieldExports.Vehicles.BaseBuild build)
+    {
+        // EditingPlayer may be null on an update that doesn't touch it; ignore those (no transition info).
+        if (build.EditingPlayer is null)
+        {
+            return;
+        }
+
+        var editingGuid = build.EditingPlayer.Value; // 0 (or invalid) == nobody editing
+        var hadActive = _activeEdits.TryGetValue(channelIndex, out var active);
+
+        if (editingGuid > 0)
+        {
+            // An edit is (or just became) active on this piece.
+            if (!hadActive)
+            {
+                // EditingPlayer may be a pawn actor GUID OR a player-state actor GUID. Try the pawn
+                // chain first, then resolve it directly as a player-state channel.
+                if (!TryGetPlayerDataFromActor(editingGuid, out var editor)
+                    && _actorToChannel.TryGetValue(editingGuid, out var directChannel))
+                {
+                    _players.TryGetValue(directChannel, out editor);
+                }
+                _activeEdits[channelIndex] = (editor!, ReplicatedWorldTimeSecondsDouble);
+            }
+            return;
+        }
+
+        // editingGuid == 0: editing ended on this piece. Close any active edit.
+        if (hadActive)
+        {
+            _activeEdits.Remove(channelIndex);
+            if (active.player is not null)
+            {
+                var ev = new EditEvent
+                {
+                    BuildChannel = channelIndex,
+                    StartTime = active.startTime,
+                    EndTime = ReplicatedWorldTimeSecondsDouble,
+                };
+                active.player.EditCount++;
+                active.player.EditEvents.Add(ev);
+                // Only fold plausible durations into the aggregate. A real competitive edit is well
+                // under a second to a few seconds; long values are pieces left flagged / not a single
+                // continuous edit (observed up to several minutes). Count the edit, cap the duration.
+                if (ev.DurationSeconds is double d && d >= 0 && d <= EditDurationCapSeconds)
+                {
+                    active.player.EditTotalDurationSeconds += d;
+                    active.player.EditTimedCount++;
+                }
+            }
+        }
+    }
+
+    /// <summary>Max plausible single-edit duration (seconds) folded into duration aggregates. See UpdateBuild.</summary>
+    public const double EditDurationCapSeconds = 10.0;
+
+    /// <summary>
+    /// Record a ClientObservedStats name/value pair (Debug mode) against the owning pawn's player.
+    /// </summary>
+    public void UpdateClientObservedStats(uint channelIndex, FortClientObservedStat stat)
+    {
+        if (string.IsNullOrEmpty(stat.StatName) || stat.StatValue is not int value)
+        {
+            return;
+        }
+        if (TryGetPlayerDataFromPawn(channelIndex, out var player))
+        {
+            player.ObservedStats[stat.StatName] = value;
+        }
     }
 
     public void UpdatePlayerPawn(uint channelIndex, PlayerPawn pawn)
