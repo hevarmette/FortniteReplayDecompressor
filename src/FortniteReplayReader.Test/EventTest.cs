@@ -58,7 +58,7 @@ public class EventTest
     }
 
     [Fact]
-    public void ReadEventTestThrows()
+    public void ReadEventTestCollectsUnknownInDebugMode()
     {
         byte[] rawData = {
             0x43, 0x00, 0x00, 0x00, 0x55, 0x6E, 0x73, 0x61, 0x76, 0x65, 0x64, 0x52, 0x65,
@@ -86,12 +86,17 @@ public class EventTest
         });
         reader.SetMode(ParseMode.Debug);
 
-        Assert.Throws<UnknownEventException>(() => reader.ReadEvent(archive));
+        // Changed in the fork (Task 6): Debug mode no longer throws on unknown events — it collects them
+        // so that Debug-level net-field parsing (edits/stats) can complete despite unparsed event chunks
+        // like "Timecode". The event body was already consumed, so parsing continues cleanly.
+        var exception = Record.Exception(() => reader.ReadEvent(archive));
+        Assert.Null(exception);
+        Assert.Single(reader.UnknownEvents);
 
         archive.Reset();
         reader.SetMode(ParseMode.Normal);
 
-        var exception = Record.Exception(() => reader.ReadEvent(archive));
-        Assert.Null(exception);
+        var normalException = Record.Exception(() => reader.ReadEvent(archive));
+        Assert.Null(normalException);
     }
 }
